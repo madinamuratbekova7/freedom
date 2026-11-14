@@ -26,6 +26,8 @@ npm run dev
 | `docs/PRESENTATION.md` | План 7 слайдов |
 | `docs/SPEECH.md` | Речь на 3 минуты и ответы на вопросы |
 | `docs/screens/` | Скриншоты экранов для слайдов |
+| `docs/DEPLOY.md` | Как выложить на Netlify (пошагово) |
+| `netlify.toml` | Настройки сборки для Netlify |
 | `src/engine/montecarlo.ts` | Монте-Карло: коррелированное броуновское движение + скачки Мертона |
 | `src/engine/risk.ts` | HHI, вклад в риск, VaR / CVaR, просадки |
 | `src/engine/nlp.ts` | Разбор свободного ответа с допуском опечаток |

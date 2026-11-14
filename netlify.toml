@@ -1,0 +1,7 @@
+# Настройки сборки для Netlify. Благодаря этому файлу в интерфейсе ничего вводить не нужно.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
