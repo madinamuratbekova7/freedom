@@ -7,6 +7,7 @@ import { evaluatePortfolio, simulateMarket, type Simulation } from "./engine/mon
 import { analyzeAnswer, type AnswerAnalysis } from "./engine/nlp";
 import { summarize } from "./engine/risk";
 import { AmbushFlowScreens } from "./screens";
+import { Experiment } from "./screens/Experiment";
 import { type ChatMessage, type MasteryEvent, SIM_OPTIONS, type Stage, STAGES } from "./state";
 import { Hood } from "./ui/Hood";
 
@@ -15,6 +16,7 @@ const openingChat = (): ChatMessage[] => AIGERIM_OPENING.map((text) => ({ from: 
 const emptyWeights = (scenario: Scenario) => scenario.assets.map(() => 0);
 
 export function App() {
+  const [view, setView] = useState<"prototype" | "experiment">("prototype");
   const [stage, setStage] = useState<Stage>("intro");
   const [mastery, setMastery] = useState<MasteryEvent[]>([{ label: "До урока", value: P_INIT }]);
   const [dialog, setDialog] = useState<DialogState>(initialDialog);
@@ -117,6 +119,19 @@ export function App() {
             <span>тренажёр самостоятельных решений · учебный прототип</span>
           </div>
         </div>
+        <div className="views" role="tablist" aria-label="Раздел">
+          <button role="tab" aria-selected={view === "prototype"} className={view === "prototype" ? "on" : ""} onClick={() => setView("prototype")}>
+            Прототип
+          </button>
+          <button role="tab" aria-selected={view === "experiment"} className={view === "experiment" ? "on" : ""} onClick={() => setView("experiment")}>
+            Эксперимент
+          </button>
+        </div>
+      </header>
+
+      {view === "experiment" && <Experiment />}
+
+      {view === "prototype" && (
         <nav className="stepper" aria-label="Шаги сценария">
           {STAGES.map((item, i) => (
             <button
@@ -131,8 +146,9 @@ export function App() {
             </button>
           ))}
         </nav>
-      </header>
+      )}
 
+      {view === "prototype" && (
       <main className="stage">
         <div className="phone">
           <div className="phone-bar">
@@ -180,6 +196,7 @@ export function App() {
           report={report}
         />
       </main>
+      )}
     </div>
   );
 }
