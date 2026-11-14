@@ -84,7 +84,10 @@ export function analyzeDecision(scenario: Scenario, sim: Simulation, weights: nu
     findings.push({
       id: "risk-share",
       title: "Доля денег ≠ доля риска",
-      text: `${name} — это ${pct(maxShare)} твоих денег, но ${pct(riskShares[maxIndex])} всего риска портфеля.`,
+      text:
+        maxShare >= 0.99
+          ? `${name} — это все твои деньги и весь риск портфеля: одна плохая новость бьёт по всему счёту.`
+          : `${name} — это ${pct(maxShare)} твоих денег, но ${pct(riskShares[maxIndex])} всего риска портфеля.`,
     });
     findings.push({
       id: "bad-year",

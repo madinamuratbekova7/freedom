@@ -135,7 +135,7 @@ export function DotGrid({ outcome }: { outcome: PortfolioOutcome }) {
         </li>
         <li>
           <i style={{ background: COLORS.lost }} />
-          Небольшой минус — <b>{lost}</b>
+          В минусе, но больше половины цело — <b>{lost}</b>
         </li>
         <li>
           <i style={{ background: COLORS.gained }} />В плюсе — <b>{gained}</b>
