@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { Scenario } from "../engine/ambush";
 import { type BlackBoxReport, STAKE } from "../engine/blackbox";
 import { money, pct } from "../state";
 import { DotGrid, FanChart, MasteryBar } from "../ui/charts";
+import { Confetti, daysWord, useCountUp } from "../ui/motion";
+
+/** 3D-сцена тяжёлая, поэтому подгружается только на экране перемотки. */
+const Landscape3D = lazy(() => import("../ui/Landscape3D"));
 
 interface AmbushProps {
   scenario: Scenario;
@@ -25,7 +29,9 @@ export function Ambush({ scenario, weights, daysLater, marked, onChange, onConfi
 
   return (
     <div className="screen feed">
-      <div className="time-chip">{daysLater} дней спустя · вторник, 09:41</div>
+      <div className="time-chip">
+        {daysLater} {daysWord(daysLater)} спустя · вторник, 09:41
+      </div>
       {marked && <div className="marked-chip">Учебная ситуация · пометка включена по твоему выбору</div>}
 
       <div className="feed-card account">
@@ -42,7 +48,7 @@ export function Ambush({ scenario, weights, daysLater, marked, onChange, onConfi
           </div>
         </div>
         {scenario.messages.map((text, i) => (
-          <div key={i} className="bubble aigerim">
+          <div key={i} className="bubble aigerim" style={{ animationDelay: `${250 + i * 320}ms` }}>
             {text}
           </div>
         ))}
@@ -96,10 +102,12 @@ interface RewindProps {
 export function Rewind({ scenario, report, paths, marked, onNext }: RewindProps) {
   const [view, setView] = useState<"mine" | "spread">("mine");
   const [seenSpread, setSeenSpread] = useState(false);
+  const [mode, setMode] = useState<"3d" | "2d">("3d");
   const mine = view === "mine";
   const outcome = mine ? report.userOutcome : report.alternativeOutcome;
   const summary = mine ? report.user : report.alternative;
   const lostHalf = Math.round(summary.pLossHalf * paths);
+  const shownLost = useCountUp(lostHalf, 1500);
 
   return (
     <div className="screen">
@@ -110,7 +118,7 @@ export function Rewind({ scenario, report, paths, marked, onNext }: RewindProps)
       <h1>
         {lostHalf === 0
           ? "Ни в одном будущем не потеряно больше половины"
-          : `В ${lostHalf} из ${paths} осталось меньше половины`}
+          : `В ${shownLost} из ${paths} осталось меньше половины`}
       </h1>
 
       <div className="tabs" role="tablist">
@@ -130,8 +138,23 @@ export function Rewind({ scenario, report, paths, marked, onNext }: RewindProps)
         </button>
       </div>
 
-      <FanChart key={view} outcome={outcome} animate={mine ? true : !seenSpread} />
-      <DotGrid outcome={outcome} />
+      <div className="viz">
+        {mode === "3d" ? (
+          <Suspense fallback={<div className="landscape wait">Строим ландшафт будущих…</div>}>
+            <Landscape3D outcome={outcome} onUnavailable={() => setMode("2d")} />
+          </Suspense>
+        ) : (
+          <FanChart key={view} outcome={outcome} animate={mine ? true : !seenSpread} />
+        )}
+        <button className="viz-toggle" onClick={() => setMode(mode === "3d" ? "2d" : "3d")}>
+          {mode === "3d" ? "Линии" : "3D"}
+        </button>
+      </div>
+      {mode === "3d" && (
+        <p className="viz-hint">Потяни, чтобы повернуть. Ближе — худшие будущие, дальше — лучшие.</p>
+      )}
+
+      <DotGrid key={view} outcome={outcome} />
 
       <div className="stats">
         <div>
@@ -196,7 +219,10 @@ export function Result(props: ResultProps) {
         </>
       ) : (
         <>
-          <div className="badge">🛡</div>
+          <div className="badge-wrap">
+            <Confetti />
+            <div className="badge">🛡</div>
+          </div>
           <h1 className="center">Засада пройдена</h1>
           <p className="lead center">
             Никто не подсказывал — а в одной компании оказалось не больше {pct(Math.max(report.maxShare, 0))} денег.
@@ -234,7 +260,9 @@ export function Result(props: ResultProps) {
       <MasteryBar before={masteryBefore} after={masteryAfter} />
 
       <div className="card">
-        <b>Следующая засада — через {nextInDays} дн.</b>
+        <b>
+          Следующая засада — через {nextInDays} {daysWord(nextInDays)}
+        </b>
         <p>
           {failed
             ? "Скоро и в другом обличье: другая отрасль, другой рассказчик, тот же принцип."

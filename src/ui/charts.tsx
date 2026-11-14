@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PortfolioOutcome } from "../engine/montecarlo";
 
 const COLORS = { lostHalf: "#d92d20", lost: "#f79009", gained: "#12a150" };
@@ -125,7 +125,7 @@ export function DotGrid({ outcome }: { outcome: PortfolioOutcome }) {
     <div>
       <div className="dots" aria-hidden="true">
         {cells.map((color, i) => (
-          <span key={i} style={{ background: color }} />
+          <span key={i} style={{ background: color, animationDelay: `${i * 7}ms` }} />
         ))}
       </div>
       <ul className="legend">
@@ -147,6 +147,13 @@ export function DotGrid({ outcome }: { outcome: PortfolioOutcome }) {
 
 export function MasteryBar({ before, after }: { before: number; after: number }) {
   const up = after >= before;
+  // Шкала стартует со старого значения и доезжает до нового — рост или падение видно глазами.
+  const [shown, setShown] = useState(before);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShown(after), 250);
+    return () => window.clearTimeout(timer);
+  }, [after]);
+
   return (
     <div className="mastery">
       <div className="mastery-head">
@@ -156,8 +163,8 @@ export function MasteryBar({ before, after }: { before: number; after: number })
         </b>
       </div>
       <div className="mastery-track">
-        <div className="mastery-before" style={{ width: `${before * 100}%` }} />
-        <div className={`mastery-after ${up ? "good" : "bad"}`} style={{ width: `${after * 100}%` }} />
+        <div className={`mastery-fill ${up ? "good" : "bad"}`} style={{ width: `${shown * 100}%` }} />
+        <div className="mastery-mark" style={{ left: `${before * 100}%` }} />
       </div>
     </div>
   );

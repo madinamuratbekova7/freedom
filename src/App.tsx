@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { buildAssets, generateAmbush, LESSON_FEATURES, type Scenario, type ScenarioFeatures } from "./engine/ambush";
 import { bktUpdate, nextAmbushInDays, P_INIT } from "./engine/bkt";
 import { analyzeDecision, type BlackBoxReport } from "./engine/blackbox";
@@ -10,8 +10,10 @@ import { AmbushFlowScreens } from "./screens";
 import { Experiment } from "./screens/Experiment";
 import { type ChatMessage, type MasteryEvent, SIM_OPTIONS, type Stage, STAGES } from "./state";
 import { Hood } from "./ui/Hood";
+import { TimeSkip } from "./ui/motion";
 
 const SEED_TEXT = "demo";
+const FIRST_AMBUSH_DAYS = 5;
 const openingChat = (): ChatMessage[] => AIGERIM_OPENING.map((text) => ({ from: "aigerim", text }));
 const emptyWeights = (scenario: Scenario) => scenario.assets.map(() => 0);
 
@@ -21,6 +23,7 @@ export function App() {
   const [mastery, setMastery] = useState<MasteryEvent[]>([{ label: "До урока", value: P_INIT }]);
   const [dialog, setDialog] = useState<DialogState>(initialDialog);
   const [chat, setChat] = useState<ChatMessage[]>(openingChat);
+  const [typing, setTyping] = useState(false);
   const [analysis, setAnalysis] = useState<AnswerAnalysis | null>(null);
   const [lastReply, setLastReply] = useState<DialogReply | null>(null);
   const [debateBefore, setDebateBefore] = useState(P_INIT);
@@ -31,8 +34,13 @@ export function App() {
   const [report, setReport] = useState<BlackBoxReport | null>(null);
   const [ambushBefore, setAmbushBefore] = useState(P_INIT);
   const [ambushCount, setAmbushCount] = useState(1);
+  const [daysLater, setDaysLater] = useState(FIRST_AMBUSH_DAYS);
+  /** Идёт анимация перемотки времени перед засадой. */
+  const [skipping, setSkipping] = useState(false);
   /** false — клиент отказался от неожиданной проверки: засада придёт с пометкой «учебная». */
   const [surprise, setSurprise] = useState(true);
+  const phoneRef = useRef<HTMLDivElement>(null);
+  const replyTimer = useRef(0);
 
   const current = mastery[mastery.length - 1].value;
 
@@ -50,26 +58,41 @@ export function App() {
   const pushMastery = (label: string, value: number) => setMastery((events) => [...events, { label, value }]);
 
   const sendAnswer = (text: string) => {
+    if (typing) return;
     const result = analyzeAnswer(text);
     const reply = respond(dialog, result);
     setAnalysis(result);
-    setLastReply(reply);
-    setDialog(reply.state);
-    setChat((messages) => [...messages, { from: "me", text }, { from: "aigerim", text: reply.text }]);
-    if (reply.state.outcome !== "ongoing") {
-      // Первая засада ещё не сыграна — перенацеливаем её на пробелы этого спора.
-      if (ambushCount === 1 && report === null) {
-        const targeted = generateAmbush([LESSON_FEATURES], SEED_TEXT, weakConcepts(reply.state));
-        setScenario(targeted);
-        setWeights(emptyWeights(targeted));
-      }
-      const convinced = reply.state.outcome === "convinced";
-      setDebateBefore(current);
-      pushMastery(convinced ? "Спор: Айгерим убеждена" : "Спор: Айгерим не убеждена", bktUpdate(current, convinced, "free"));
-    }
+    setChat((messages) => [...messages, { from: "me", text }]);
+    setTyping(true);
+
+    // Айгерим «печатает» — пауза зависит от длины её ответа.
+    replyTimer.current = window.setTimeout(
+      () => {
+        setTyping(false);
+        setLastReply(reply);
+        setDialog(reply.state);
+        setChat((messages) => [...messages, { from: "aigerim", text: reply.text }]);
+        if (reply.state.outcome === "ongoing") return;
+        // Первая засада ещё не сыграна — перенацеливаем её на пробелы этого спора.
+        if (ambushCount === 1 && report === null) {
+          const targeted = generateAmbush([LESSON_FEATURES], SEED_TEXT, weakConcepts(reply.state));
+          setScenario(targeted);
+          setWeights(emptyWeights(targeted));
+        }
+        const convinced = reply.state.outcome === "convinced";
+        setDebateBefore(current);
+        pushMastery(
+          convinced ? "Спор: Айгерим убеждена" : "Спор: Айгерим не убеждена",
+          bktUpdate(current, convinced, "free"),
+        );
+      },
+      500 + Math.min(900, reply.text.length * 6),
+    );
   };
 
   const retryDebate = () => {
+    window.clearTimeout(replyTimer.current);
+    setTyping(false);
     setDialog(initialDialog());
     setChat(openingChat());
     setAnalysis(null);
@@ -91,16 +114,20 @@ export function App() {
     setStage("rewind");
   };
 
+  const passed = report ? report.verdict !== "fail" : false;
+  const nextInDays = nextAmbushInDays(current, passed);
+
   const nextAmbush = () => {
     const seen = [...history, scenario.features];
     const next = generateAmbush(seen, SEED_TEXT, weakConcepts(dialog));
+    setDaysLater(nextInDays);
     setHistory(seen);
     setScenario(next);
     setWeights(emptyWeights(next));
     setSim(null);
     setReport(null);
     setAmbushCount((count) => count + 1);
-    setStage("ambush");
+    setSkipping(true);
   };
 
   const restart = () => {
@@ -114,6 +141,8 @@ export function App() {
     setSim(null);
     setReport(null);
     setAmbushCount(1);
+    setDaysLater(FIRST_AMBUSH_DAYS);
+    setSkipping(false);
     setSurprise(true);
   };
 
@@ -123,8 +152,20 @@ export function App() {
     return report !== null;
   };
 
-  const passed = report ? report.verdict !== "fail" : false;
-  const lastInterval = nextAmbushInDays(current, passed);
+  /** Лёгкий 3D-наклон телефона за курсором — только на больших экранах с мышью. */
+  const tilt = (event: React.PointerEvent<HTMLElement>) => {
+    const phone = phoneRef.current;
+    if (!phone || event.pointerType !== "mouse" || window.innerWidth <= 860) return;
+    const box = phone.getBoundingClientRect();
+    const x = (event.clientX - (box.left + box.width / 2)) / box.width;
+    const y = (event.clientY - (box.top + box.height / 2)) / box.height;
+    phone.style.setProperty("--tilt-y", `${Math.max(-1, Math.min(1, x)) * 3.5}deg`);
+    phone.style.setProperty("--tilt-x", `${Math.max(-1, Math.min(1, y)) * -2.5}deg`);
+  };
+  const resetTilt = () => {
+    phoneRef.current?.style.setProperty("--tilt-y", "0deg");
+    phoneRef.current?.style.setProperty("--tilt-x", "0deg");
+  };
 
   return (
     <div className="page">
@@ -137,10 +178,20 @@ export function App() {
           </div>
         </div>
         <div className="views" role="tablist" aria-label="Раздел">
-          <button role="tab" aria-selected={view === "prototype"} className={view === "prototype" ? "on" : ""} onClick={() => setView("prototype")}>
+          <button
+            role="tab"
+            aria-selected={view === "prototype"}
+            className={view === "prototype" ? "on" : ""}
+            onClick={() => setView("prototype")}
+          >
             Прототип
           </button>
-          <button role="tab" aria-selected={view === "experiment"} className={view === "experiment" ? "on" : ""} onClick={() => setView("experiment")}>
+          <button
+            role="tab"
+            aria-selected={view === "experiment"}
+            className={view === "experiment" ? "on" : ""}
+            onClick={() => setView("experiment")}
+          >
             Эксперимент
           </button>
         </div>
@@ -154,7 +205,7 @@ export function App() {
             <button
               key={item.id}
               className={item.id === stage ? "on" : ""}
-              disabled={!reachable(item.id)}
+              disabled={!reachable(item.id) || skipping}
               aria-current={item.id === stage ? "step" : undefined}
               onClick={() => setStage(item.id)}
             >
@@ -166,58 +217,69 @@ export function App() {
       )}
 
       {view === "prototype" && (
-      <main className="stage">
-        <div className="phone">
-          <div className="phone-bar">
-            <span>Freedom Broker</span>
-            <span>{stage === "ambush" ? "Лента" : "Обучение"}</span>
+        <main className="stage" onPointerMove={tilt} onPointerLeave={resetTilt}>
+          <div className="phone" ref={phoneRef}>
+            <div className="phone-bar">
+              <span>Freedom Broker</span>
+              <span>{stage === "ambush" && !skipping ? "Лента" : "Обучение"}</span>
+            </div>
+            <div className="phone-screen" key={skipping ? "skip" : `${stage}-${ambushCount}`}>
+              {skipping ? (
+                <TimeSkip
+                  days={daysLater}
+                  onDone={() => {
+                    setSkipping(false);
+                    setStage("ambush");
+                  }}
+                />
+              ) : (
+                <AmbushFlowScreens
+                  stage={stage}
+                  chat={chat}
+                  typing={typing}
+                  dialog={dialog}
+                  aigerimLossHalf={aigerimLossHalf}
+                  debateBefore={debateBefore}
+                  current={current}
+                  scenario={scenario}
+                  weights={weights}
+                  report={report}
+                  ambushBefore={ambushBefore}
+                  daysLater={daysLater}
+                  nextInDays={nextInDays}
+                  marked={!surprise}
+                  onStart={(consent) => {
+                    setSurprise(consent);
+                    setStage("debate");
+                  }}
+                  onSend={sendAnswer}
+                  onRetry={retryDebate}
+                  onToFeedback={() => setStage("feedback")}
+                  onToAmbush={() => setSkipping(true)}
+                  onWeights={setWeights}
+                  onConfirm={confirmAllocation}
+                  onToResult={() => setStage("result")}
+                  onNextAmbush={nextAmbush}
+                  onRestart={restart}
+                />
+              )}
+            </div>
           </div>
-          <div className="phone-screen" key={`${stage}-${ambushCount}`}>
-            <AmbushFlowScreens
-              stage={stage}
-              chat={chat}
-              dialog={dialog}
-              aigerimLossHalf={aigerimLossHalf}
-              debateBefore={debateBefore}
-              current={current}
-              scenario={scenario}
-              weights={weights}
-              report={report}
-              ambushBefore={ambushBefore}
-              daysLater={ambushCount === 1 ? 5 : 3}
-              nextInDays={lastInterval}
-              marked={!surprise}
-              onStart={(consent) => {
-                setSurprise(consent);
-                setStage("debate");
-              }}
-              onSend={sendAnswer}
-              onRetry={retryDebate}
-              onToFeedback={() => setStage("feedback")}
-              onToAmbush={() => setStage("ambush")}
-              onWeights={setWeights}
-              onConfirm={confirmAllocation}
-              onToResult={() => setStage("result")}
-              onNextAmbush={nextAmbush}
-              onRestart={restart}
-            />
-          </div>
-        </div>
 
-        <Hood
-          stage={stage}
-          analysis={analysis}
-          lastReply={lastReply}
-          dialog={dialog}
-          mastery={mastery}
-          scenario={scenario}
-          history={history}
-          weights={weights}
-          sim={sim}
-          report={report}
-          surprise={surprise}
-        />
-      </main>
+          <Hood
+            stage={stage}
+            analysis={analysis}
+            lastReply={lastReply}
+            dialog={dialog}
+            mastery={mastery}
+            scenario={scenario}
+            history={history}
+            weights={weights}
+            sim={sim}
+            report={report}
+            surprise={surprise}
+          />
+        </main>
       )}
     </div>
   );

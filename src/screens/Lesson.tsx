@@ -3,6 +3,7 @@ import type { DialogState } from "../engine/dialog";
 import { CONCEPT_ORDER, CONCEPTS } from "../engine/nlp";
 import type { ChatMessage } from "../state";
 import { MasteryBar } from "../ui/charts";
+import { TypingBubble } from "../ui/motion";
 
 export function Intro({ onStart }: { onStart: (surprise: boolean) => void }) {
   const [consent, setConsent] = useState(false);
@@ -43,6 +44,8 @@ export function Intro({ onStart }: { onStart: (surprise: boolean) => void }) {
 
 interface DebateProps {
   chat: ChatMessage[];
+  /** Айгерим «печатает» ответ. */
+  typing: boolean;
   dialog: DialogState;
   /** Доля будущих, где Айгерим теряет больше половины, — показываем, если клиент согласился с ней. */
   aigerimLossHalf: number | null;
@@ -51,18 +54,18 @@ interface DebateProps {
   onNext: () => void;
 }
 
-export function Debate({ chat, dialog, aigerimLossHalf, onSend, onRetry, onNext }: DebateProps) {
+export function Debate({ chat, typing, dialog, aigerimLossHalf, onSend, onRetry, onNext }: DebateProps) {
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const finished = dialog.outcome !== "ongoing";
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [chat.length, finished]);
+  }, [chat.length, finished, typing]);
 
   const send = () => {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || typing) return;
     onSend(text);
     setDraft("");
   };
@@ -83,6 +86,8 @@ export function Debate({ chat, dialog, aigerimLossHalf, onSend, onRetry, onNext 
             {message.text}
           </div>
         ))}
+
+        {typing && <TypingBubble />}
 
         {dialog.outcome === "agreed" && aigerimLossHalf !== null && (
           <div className="card danger">
@@ -134,7 +139,7 @@ export function Debate({ chat, dialog, aigerimLossHalf, onSend, onRetry, onNext 
               }
             }}
           />
-          <button className="send" onClick={send} disabled={!draft.trim()} aria-label="Отправить">
+          <button className="send" onClick={send} disabled={!draft.trim() || typing} aria-label="Отправить">
             ↑
           </button>
         </div>

@@ -8,6 +8,7 @@ import { Debate, Feedback, Intro } from "./Lesson";
 interface Props {
   stage: Stage;
   chat: ChatMessage[];
+  typing: boolean;
   dialog: DialogState;
   aigerimLossHalf: number | null;
   debateBefore: number;
@@ -41,6 +42,7 @@ export function AmbushFlowScreens(props: Props) {
     return (
       <Debate
         chat={props.chat}
+        typing={props.typing}
         dialog={props.dialog}
         aigerimLossHalf={props.aigerimLossHalf}
         onSend={props.onSend}
