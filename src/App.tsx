@@ -1,3 +1,185 @@
+import { useMemo, useState } from "react";
+import { buildAssets, generateAmbush, LESSON_FEATURES, type Scenario, type ScenarioFeatures } from "./engine/ambush";
+import { bktUpdate, nextAmbushInDays, P_INIT } from "./engine/bkt";
+import { analyzeDecision, type BlackBoxReport } from "./engine/blackbox";
+import { AIGERIM_OPENING, type DialogReply, type DialogState, initialDialog, respond } from "./engine/dialog";
+import { evaluatePortfolio, simulateMarket, type Simulation } from "./engine/montecarlo";
+import { analyzeAnswer, type AnswerAnalysis } from "./engine/nlp";
+import { summarize } from "./engine/risk";
+import { AmbushFlowScreens } from "./screens";
+import { type ChatMessage, type MasteryEvent, SIM_OPTIONS, type Stage, STAGES } from "./state";
+import { Hood } from "./ui/Hood";
+
+const SEED_TEXT = "demo";
+const openingChat = (): ChatMessage[] => AIGERIM_OPENING.map((text) => ({ from: "aigerim", text }));
+const emptyWeights = (scenario: Scenario) => scenario.assets.map(() => 0);
+
 export function App() {
-  return <main className="phone">Засада</main>;
+  const [stage, setStage] = useState<Stage>("intro");
+  const [mastery, setMastery] = useState<MasteryEvent[]>([{ label: "До урока", value: P_INIT }]);
+  const [dialog, setDialog] = useState<DialogState>(initialDialog);
+  const [chat, setChat] = useState<ChatMessage[]>(openingChat);
+  const [analysis, setAnalysis] = useState<AnswerAnalysis | null>(null);
+  const [lastReply, setLastReply] = useState<DialogReply | null>(null);
+  const [debateBefore, setDebateBefore] = useState(P_INIT);
+  const [history, setHistory] = useState<ScenarioFeatures[]>([LESSON_FEATURES]);
+  const [scenario, setScenario] = useState<Scenario>(() => generateAmbush([LESSON_FEATURES], SEED_TEXT));
+  const [weights, setWeights] = useState<number[]>(() => emptyWeights(scenario));
+  const [sim, setSim] = useState<Simulation | null>(null);
+  const [report, setReport] = useState<BlackBoxReport | null>(null);
+  const [ambushBefore, setAmbushBefore] = useState(P_INIT);
+  const [ambushCount, setAmbushCount] = useState(1);
+
+  const current = mastery[mastery.length - 1].value;
+
+  /** Что стало бы с Айгерим, вложи она всё в NeuroCore, — тот же движок, рынок урока. */
+  const aigerimLossHalf = useMemo(() => {
+    if (dialog.outcome !== "agreed") return null;
+    const lessonSim = simulateMarket(buildAssets("ai"), { ...SIM_OPTIONS, seed: 7 });
+    return summarize(evaluatePortfolio(lessonSim, [1, 0, 0, 0, 0])).pLossHalf;
+  }, [dialog.outcome]);
+
+  const pushMastery = (label: string, value: number) => setMastery((events) => [...events, { label, value }]);
+
+  const sendAnswer = (text: string) => {
+    const result = analyzeAnswer(text);
+    const reply = respond(dialog, result);
+    setAnalysis(result);
+    setLastReply(reply);
+    setDialog(reply.state);
+    setChat((messages) => [...messages, { from: "me", text }, { from: "aigerim", text: reply.text }]);
+    if (reply.state.outcome !== "ongoing") {
+      const convinced = reply.state.outcome === "convinced";
+      setDebateBefore(current);
+      pushMastery(convinced ? "Спор: Айгерим убеждена" : "Спор: Айгерим не убеждена", bktUpdate(current, convinced, "free"));
+    }
+  };
+
+  const retryDebate = () => {
+    setDialog(initialDialog());
+    setChat(openingChat());
+    setAnalysis(null);
+    setLastReply(null);
+  };
+
+  const confirmAllocation = () => {
+    const market = simulateMarket(scenario.assets, { ...SIM_OPTIONS, seed: scenario.seed });
+    const result = analyzeDecision(scenario, market, weights);
+    const passed = result.verdict !== "fail";
+    setSim(market);
+    setReport(result);
+    setAmbushBefore(current);
+    pushMastery(`Засада ${ambushCount}: ${passed ? "пройдена" : "провал"}`, bktUpdate(current, passed, "transfer"));
+    setStage("rewind");
+  };
+
+  const nextAmbush = () => {
+    const seen = [...history, scenario.features];
+    const next = generateAmbush(seen, SEED_TEXT);
+    setHistory(seen);
+    setScenario(next);
+    setWeights(emptyWeights(next));
+    setSim(null);
+    setReport(null);
+    setAmbushCount((count) => count + 1);
+    setStage("ambush");
+  };
+
+  const restart = () => {
+    const first = generateAmbush([LESSON_FEATURES], SEED_TEXT);
+    setStage("intro");
+    setMastery([{ label: "До урока", value: P_INIT }]);
+    retryDebate();
+    setHistory([LESSON_FEATURES]);
+    setScenario(first);
+    setWeights(emptyWeights(first));
+    setSim(null);
+    setReport(null);
+    setAmbushCount(1);
+  };
+
+  const reachable = (id: Stage): boolean => {
+    if (id === "intro" || id === "debate" || id === "ambush") return true;
+    if (id === "feedback") return dialog.outcome !== "ongoing";
+    return report !== null;
+  };
+
+  const passed = report ? report.verdict !== "fail" : false;
+  const lastInterval = nextAmbushInDays(current, passed);
+
+  return (
+    <div className="page">
+      <header className="top">
+        <div className="brand">
+          <span className="logo">З</span>
+          <div>
+            <b>Засада</b>
+            <span>тренажёр самостоятельных решений · учебный прототип</span>
+          </div>
+        </div>
+        <nav className="stepper" aria-label="Шаги сценария">
+          {STAGES.map((item, i) => (
+            <button
+              key={item.id}
+              className={item.id === stage ? "on" : ""}
+              disabled={!reachable(item.id)}
+              aria-current={item.id === stage ? "step" : undefined}
+              onClick={() => setStage(item.id)}
+            >
+              <i>{i + 1}</i>
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </header>
+
+      <main className="stage">
+        <div className="phone">
+          <div className="phone-bar">
+            <span>Freedom Broker</span>
+            <span>{stage === "ambush" ? "Лента" : "Обучение"}</span>
+          </div>
+          <div className="phone-screen" key={`${stage}-${ambushCount}`}>
+            <AmbushFlowScreens
+              stage={stage}
+              chat={chat}
+              dialog={dialog}
+              aigerimLossHalf={aigerimLossHalf}
+              debateBefore={debateBefore}
+              current={current}
+              scenario={scenario}
+              weights={weights}
+              report={report}
+              ambushBefore={ambushBefore}
+              daysLater={ambushCount === 1 ? 5 : 3}
+              nextInDays={lastInterval}
+              onStart={() => setStage("debate")}
+              onSend={sendAnswer}
+              onRetry={retryDebate}
+              onToFeedback={() => setStage("feedback")}
+              onToAmbush={() => setStage("ambush")}
+              onWeights={setWeights}
+              onConfirm={confirmAllocation}
+              onToResult={() => setStage("result")}
+              onNextAmbush={nextAmbush}
+              onRestart={restart}
+            />
+          </div>
+        </div>
+
+        <Hood
+          stage={stage}
+          analysis={analysis}
+          lastReply={lastReply}
+          dialog={dialog}
+          mastery={mastery}
+          scenario={scenario}
+          history={history}
+          weights={weights}
+          sim={sim}
+          report={report}
+        />
+      </main>
+    </div>
+  );
 }

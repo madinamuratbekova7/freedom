@@ -116,7 +116,7 @@ export function respond(state: DialogState, analysis: AnswerAnalysis): DialogRep
     return {
       state: { covered, turns, clarifications: state.clarifications, outcome: "convinced" },
       kind: "convinced",
-      text: `${ack}Ты меня убедил(а). Всё в одну акцию не вкладываю — возьму NeuroCore на часть, остальное разложу.`,
+      text: `${ack}Убедительно. Всё в одну акцию не вкладываю — возьму NeuroCore на часть, остальное разложу.`,
       gained,
     };
   }
