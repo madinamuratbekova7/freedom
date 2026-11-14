@@ -36,16 +36,20 @@ function ramp(value: number, out: Float32Array, offset: number) {
   out[offset + 2] = a[3] + (b[3] - a[3]) * t;
 }
 
-/** Берём ROWS траекторий равномерно по квантилям итога — получается срез всех будущих. */
+/**
+ * Квантильная поверхность: для каждой недели сортируем все 2000 будущих и берём ROWS квантилей.
+ * Получается гладкий рельеф распределения: передний край — худшие исходы, дальний — лучшие.
+ */
 function sampleSurface(outcome: PortfolioOutcome): Float32Array {
-  const order = Array.from({ length: outcome.paths }, (_, i) => i).sort(
-    (a, b) => outcome.finals[a] - outcome.finals[b],
-  );
   const heights = new Float32Array(ROWS * outcome.steps);
-  for (let r = 0; r < ROWS; r++) {
-    const path = order[Math.round((r / (ROWS - 1)) * (outcome.paths - 1))];
-    for (let s = 0; s < outcome.steps; s++) {
-      heights[r * outcome.steps + s] = Math.min(outcome.values[path * outcome.steps + s], MAX_VALUE);
+  const column = new Float32Array(outcome.paths);
+  for (let s = 0; s < outcome.steps; s++) {
+    for (let p = 0; p < outcome.paths; p++) column[p] = outcome.values[p * outcome.steps + s];
+    column.sort();
+    for (let r = 0; r < ROWS; r++) {
+      // Края (0,5% и 99,5%) вместо абсолютных минимума и максимума — один выброс не ломает рельеф.
+      const q = 0.005 + (r / (ROWS - 1)) * 0.99;
+      heights[r * outcome.steps + s] = Math.min(column[Math.round(q * (outcome.paths - 1))], MAX_VALUE);
     }
   }
   return heights;
@@ -66,7 +70,7 @@ function makeLabel(text: string, color: string): THREE.Sprite {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-  sprite.scale.set(1.1, 0.22, 1);
+  sprite.scale.set(1.35, 0.27, 1);
   return sprite;
 }
 
@@ -102,7 +106,7 @@ export default function Landscape3D({ outcome, onUnavailable }: Props) {
     const count = ROWS * cols;
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 50);
-    const target = new THREE.Vector3(0, 0.2, 0);
+    const target = new THREE.Vector3(0.25, 0.3, 0);
 
     // --- Поверхность
     const positions = new Float32Array(count * 3);
@@ -122,7 +126,8 @@ export default function Landscape3D({ outcome, onUnavailable }: Props) {
       for (let c = 0; c < cols - 1; c++) {
         const a = r * cols + c;
         if (r < ROWS - 1) faces.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
-        if (r % 9 === 0 || r === ROWS - 1) ridges.push(a, a + 1);
+        // Гребни — линии квантилей: каждые ~10% будущих.
+        if (r % 11 === 0 || r === ROWS - 1) ridges.push(a, a + 1);
       }
     }
     const positionAttr = new THREE.BufferAttribute(positions, 3);
@@ -290,7 +295,7 @@ export default function Landscape3D({ outcome, onUnavailable }: Props) {
       // После перетаскивания покачивание возвращается плавно.
       const sway = dragging ? 0 : Math.min(1, (now - idleSince) / 1500) * 0.38 * Math.sin(now * 0.00045);
       const theta = thetaBase + sway;
-      const radius = 6.4;
+      const radius = 8.4;
       camera.position.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
         target.y + radius * Math.cos(phi),
