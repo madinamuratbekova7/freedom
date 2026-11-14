@@ -4,7 +4,7 @@ import { bktUpdate, nextAmbushInDays, P_INIT } from "./engine/bkt";
 import { analyzeDecision, type BlackBoxReport } from "./engine/blackbox";
 import { AIGERIM_OPENING, type DialogReply, type DialogState, initialDialog, respond } from "./engine/dialog";
 import { evaluatePortfolio, simulateMarket, type Simulation } from "./engine/montecarlo";
-import { analyzeAnswer, type AnswerAnalysis } from "./engine/nlp";
+import { analyzeAnswer, type AnswerAnalysis, CONCEPT_ORDER, type ConceptId } from "./engine/nlp";
 import { summarize } from "./engine/risk";
 import { AmbushFlowScreens } from "./screens";
 import { Experiment } from "./screens/Experiment";
@@ -31,6 +31,8 @@ export function App() {
   const [report, setReport] = useState<BlackBoxReport | null>(null);
   const [ambushBefore, setAmbushBefore] = useState(P_INIT);
   const [ambushCount, setAmbushCount] = useState(1);
+  /** false — клиент отказался от неожиданной проверки: засада придёт с пометкой «учебная». */
+  const [surprise, setSurprise] = useState(true);
 
   const current = mastery[mastery.length - 1].value;
 
@@ -40,6 +42,10 @@ export function App() {
     const lessonSim = simulateMarket(buildAssets("ai"), { ...SIM_OPTIONS, seed: 7 });
     return summarize(evaluatePortfolio(lessonSim, [1, 0, 0, 0, 0])).pLossHalf;
   }, [dialog.outcome]);
+
+  /** Идеи, которые клиент не назвал в споре, — в них и целится засада. */
+  const weakConcepts = (state: DialogState): ConceptId[] =>
+    state.outcome === "ongoing" ? [] : CONCEPT_ORDER.filter((id) => !state.covered.includes(id));
 
   const pushMastery = (label: string, value: number) => setMastery((events) => [...events, { label, value }]);
 
@@ -51,6 +57,12 @@ export function App() {
     setDialog(reply.state);
     setChat((messages) => [...messages, { from: "me", text }, { from: "aigerim", text: reply.text }]);
     if (reply.state.outcome !== "ongoing") {
+      // Первая засада ещё не сыграна — перенацеливаем её на пробелы этого спора.
+      if (ambushCount === 1 && report === null) {
+        const targeted = generateAmbush([LESSON_FEATURES], SEED_TEXT, weakConcepts(reply.state));
+        setScenario(targeted);
+        setWeights(emptyWeights(targeted));
+      }
       const convinced = reply.state.outcome === "convinced";
       setDebateBefore(current);
       pushMastery(convinced ? "Спор: Айгерим убеждена" : "Спор: Айгерим не убеждена", bktUpdate(current, convinced, "free"));
@@ -71,13 +83,17 @@ export function App() {
     setSim(market);
     setReport(result);
     setAmbushBefore(current);
-    pushMastery(`Засада ${ambushCount}: ${passed ? "пройдена" : "провал"}`, bktUpdate(current, passed, "transfer"));
+    // С пометкой «учебная» догадаться проще, поэтому это более слабое свидетельство навыка.
+    pushMastery(
+      `Засада ${ambushCount}${surprise ? "" : " (с пометкой)"}: ${passed ? "пройдена" : "провал"}`,
+      bktUpdate(current, passed, surprise ? "transfer" : "free"),
+    );
     setStage("rewind");
   };
 
   const nextAmbush = () => {
     const seen = [...history, scenario.features];
-    const next = generateAmbush(seen, SEED_TEXT);
+    const next = generateAmbush(seen, SEED_TEXT, weakConcepts(dialog));
     setHistory(seen);
     setScenario(next);
     setWeights(emptyWeights(next));
@@ -98,6 +114,7 @@ export function App() {
     setSim(null);
     setReport(null);
     setAmbushCount(1);
+    setSurprise(true);
   };
 
   const reachable = (id: Stage): boolean => {
@@ -169,7 +186,11 @@ export function App() {
               ambushBefore={ambushBefore}
               daysLater={ambushCount === 1 ? 5 : 3}
               nextInDays={lastInterval}
-              onStart={() => setStage("debate")}
+              marked={!surprise}
+              onStart={(consent) => {
+                setSurprise(consent);
+                setStage("debate");
+              }}
               onSend={sendAnswer}
               onRetry={retryDebate}
               onToFeedback={() => setStage("feedback")}
@@ -194,6 +215,7 @@ export function App() {
           weights={weights}
           sim={sim}
           report={report}
+          surprise={surprise}
         />
       </main>
       )}

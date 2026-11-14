@@ -106,6 +106,14 @@ describe("Навык и засады", () => {
     expect(scenarioDistance(scenario.features, LESSON_FEATURES)).toBe(1);
     const second = generateAmbush([LESSON_FEATURES, scenario.features], "demo");
     expect(scenarioDistance(second.features, scenario.features)).toBe(1);
+    // Засада целится в идею, которую клиент не назвал в споре.
+    const pastGap = generateAmbush([LESSON_FEATURES], "demo", ["past", "cushion"]);
+    expect(pastGap.features.hook).toBe("dip");
+    expect(pastGap.targetConcept).toBe("past");
+    const cushionGap = generateAmbush([LESSON_FEATURES], "demo", ["cushion"]);
+    expect(["relative", "colleague"]).toContain(cushionGap.features.narrator);
+    expect(cushionGap.novelty).toBe(1);
+    expect(scenario.targetConcept).toBeNull();
     console.log(scenario.senderName, scenario.channelLabel, scenario.messages, "\n", second.senderName, second.messages);
   });
 });

@@ -4,7 +4,7 @@ import { CONCEPT_ORDER, CONCEPTS } from "../engine/nlp";
 import type { ChatMessage } from "../state";
 import { MasteryBar } from "../ui/charts";
 
-export function Intro({ onStart }: { onStart: () => void }) {
+export function Intro({ onStart }: { onStart: (surprise: boolean) => void }) {
   const [consent, setConsent] = useState(false);
   return (
     <div className="screen">
@@ -28,10 +28,14 @@ export function Intro({ onStart }: { onStart: () => void }) {
         <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
         <span>Хорошо, проверяйте меня неожиданно. Деньги и сделки — учебные.</span>
       </label>
-      <p className="hint">Можно не соглашаться — тогда проверка придёт с пометкой «учебная».</p>
+      <p className="hint">
+        {consent
+          ? "Засада придёт без предупреждения — так навык проверяется честнее всего."
+          : "Можно не соглашаться — тогда проверка придёт с пометкой «учебная»."}
+      </p>
 
-      <button className="primary" disabled={!consent} onClick={onStart}>
-        Начать спор
+      <button className="primary" onClick={() => onStart(consent)}>
+        {consent ? "Начать спор" : "Начать без неожиданных проверок"}
       </button>
     </div>
   );
@@ -141,12 +145,13 @@ export function Debate({ chat, dialog, aigerimLossHalf, onSend, onRetry, onNext 
 
 interface FeedbackProps {
   dialog: DialogState;
+  marked: boolean;
   masteryBefore: number;
   masteryAfter: number;
   onNext: () => void;
 }
 
-export function Feedback({ dialog, masteryBefore, masteryAfter, onNext }: FeedbackProps) {
+export function Feedback({ dialog, marked, masteryBefore, masteryAfter, onNext }: FeedbackProps) {
   return (
     <div className="screen">
       <p className="eyebrow">Разбор спора</p>
@@ -173,7 +178,10 @@ export function Feedback({ dialog, masteryBefore, masteryAfter, onNext }: Feedba
 
       <div className="card">
         <b>Награды пока нет</b>
-        <p>Её дают не за разговор, а за решение. Проверка придёт, когда не ждёшь.</p>
+        <p>
+          Её дают не за разговор, а за решение.{" "}
+          {marked ? "Проверка придёт с пометкой «учебная» — так выбрано на старте." : "Проверка придёт, когда не ждёшь."}
+        </p>
       </div>
 
       <button className="primary" onClick={onNext}>

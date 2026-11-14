@@ -35,6 +35,7 @@ interface HoodProps {
   weights: number[];
   sim: Simulation | null;
   report: BlackBoxReport | null;
+  surprise: boolean;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -47,7 +48,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export function Hood(props: HoodProps) {
-  const { stage, analysis, lastReply, dialog, mastery, scenario, history, weights, sim, report } = props;
+  const { stage, analysis, lastReply, dialog, mastery, scenario, history, weights, sim, report, surprise } = props;
   const lessonStage = stage === "debate" || stage === "feedback";
   const current = mastery[mastery.length - 1].value;
 
@@ -58,7 +59,7 @@ export function Hood(props: HoodProps) {
 
       {stage === "intro" && (
         <section>
-          <h3>8 алгоритмов, всё в браузере</h3>
+          <h3>9 алгоритмов, всё в браузере</h3>
           <ol className="hood-list">
             <li>Монте-Карло: коррелированное броуновское движение + скачки Мертона</li>
             <li>Общие случайные числа для честного сравнения решений</li>
@@ -68,6 +69,7 @@ export function Hood(props: HoodProps) {
             <li>Диалоговая политика Айгерим</li>
             <li>Генератор засад: самая непохожая ситуация</li>
             <li>Адаптивный интервал до следующей проверки</li>
+            <li>Симулятор A/B-теста (вкладка «Эксперимент»)</li>
           </ol>
         </section>
       )}
@@ -137,6 +139,14 @@ export function Hood(props: HoodProps) {
             <Row
               label="Расстояние до ближайшей"
               value={Math.min(...history.map((past) => scenarioDistance(scenario.features, past))).toFixed(2)}
+            />
+            <Row
+              label="Целится в пробел"
+              value={scenario.targetConcept ? CONCEPTS[scenario.targetConcept].title : "пробелов нет"}
+            />
+            <Row
+              label="Вид проверки"
+              value={surprise ? "без пометки · угадать 8%" : "с пометкой · угадать 20%"}
             />
             <p className="hood-note">Суть та же — «вложи всё в одну компанию». Поверхность другая: это и есть перенос.</p>
           </section>

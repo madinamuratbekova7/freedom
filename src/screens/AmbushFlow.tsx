@@ -8,11 +8,12 @@ interface AmbushProps {
   scenario: Scenario;
   weights: number[];
   daysLater: number;
+  marked: boolean;
   onChange: (weights: number[]) => void;
   onConfirm: () => void;
 }
 
-export function Ambush({ scenario, weights, daysLater, onChange, onConfirm }: AmbushProps) {
+export function Ambush({ scenario, weights, daysLater, marked, onChange, onConfirm }: AmbushProps) {
   const invested = weights.reduce((sum, w) => sum + w, 0);
   const free = Math.max(0, 1 - invested);
 
@@ -25,6 +26,7 @@ export function Ambush({ scenario, weights, daysLater, onChange, onConfirm }: Am
   return (
     <div className="screen feed">
       <div className="time-chip">{daysLater} дней спустя · вторник, 09:41</div>
+      {marked && <div className="marked-chip">Учебная ситуация · пометка включена по твоему выбору</div>}
 
       <div className="feed-card account">
         <span>Свободно на счёте</span>
@@ -87,10 +89,11 @@ interface RewindProps {
   scenario: Scenario;
   report: BlackBoxReport;
   paths: number;
+  marked: boolean;
   onNext: () => void;
 }
 
-export function Rewind({ scenario, report, paths, onNext }: RewindProps) {
+export function Rewind({ scenario, report, paths, marked, onNext }: RewindProps) {
   const [view, setView] = useState<"mine" | "spread">("mine");
   const [seenSpread, setSeenSpread] = useState(false);
   const mine = view === "mine";
@@ -100,7 +103,9 @@ export function Rewind({ scenario, report, paths, onNext }: RewindProps) {
 
   return (
     <div className="screen">
-      <div className="reveal">Это была учебная засада. Деньги учебные, решение — твоё.</div>
+      <div className="reveal">
+        {marked ? "Учебная ситуация завершена." : "Это была учебная засада."} Деньги учебные, решение — твоё.
+      </div>
       <p className="eyebrow">Перемотка на год · {paths} вариантов будущего</p>
       <h1>
         {lostHalf === 0

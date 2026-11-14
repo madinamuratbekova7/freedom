@@ -1,4 +1,5 @@
 import type { Asset } from "./market";
+import type { ConceptId } from "./nlp";
 import { hashSeed, mulberry32 } from "./rng";
 
 /**
@@ -32,6 +33,8 @@ export interface Scenario {
   assets: Asset[];
   /** Насколько засада далека от пройденного, 0…1. */
   novelty: number;
+  /** Идея, которую клиент не назвал в споре и которую проверяет эта засада. */
+  targetConcept: ConceptId | null;
   seed: number;
 }
 
@@ -127,6 +130,26 @@ export function scenarioDistance(a: ScenarioFeatures, b: ScenarioFeatures): numb
   return distance / TOTAL_WEIGHT;
 }
 
+/** Какую идею проверяет крючок или рассказчик. Засада бьёт в то, чего клиент не назвал в споре. */
+const HOOK_TARGETS: Partial<Record<HookId, ConceptId>> = {
+  growth: "past",
+  dip: "past",
+  insider: "single",
+  ipo: "single",
+  crowd: "share",
+};
+const NARRATOR_TARGETS: Partial<Record<NarratorId, ConceptId>> = {
+  relative: "cushion",
+  colleague: "cushion",
+  blogger: "diversify",
+};
+const TARGET_BONUS = 0.2;
+
+function targetOf(features: ScenarioFeatures, weak: ConceptId[]): ConceptId | null {
+  const candidates = [HOOK_TARGETS[features.hook], NARRATOR_TARGETS[features.narrator]];
+  return weak.find((id) => candidates.includes(id)) ?? null;
+}
+
 function calmStocks(excluded: SectorId): Asset[] {
   const pool: { id: string; name: string; note: string; sector: string }[] = [
     { id: "telecom", name: "Орда Телеком", note: "связь", sector: "telecom" },
@@ -211,13 +234,17 @@ function allCandidates(): ScenarioFeatures[] {
  * Выбор по принципу «самая дальняя точка»: берём ситуацию, у которой минимальное расстояние
  * до уже пройденных максимально. Среди равных выбирает сидируемый генератор.
  */
-export function generateAmbush(history: ScenarioFeatures[], seedText: string): Scenario {
+export function generateAmbush(history: ScenarioFeatures[], seedText: string, weak: ConceptId[] = []): Scenario {
   const seed = hashSeed(`${seedText}:${history.length}`);
   const rng = mulberry32(seed);
   let best: ScenarioFeatures[] = [];
   let bestScore = -1;
   for (const candidate of allCandidates()) {
-    const score = Math.min(...history.map((past) => scenarioDistance(candidate, past)));
+    const distance = Math.min(...history.map((past) => scenarioDistance(candidate, past)));
+    // Первая из неназванных идей важнее остальных: за неё полный бонус, за прочие — половина.
+    const target = targetOf(candidate, weak);
+    const bonus = target === null ? 0 : target === weak[0] ? TARGET_BONUS : TARGET_BONUS / 2;
+    const score = distance + bonus;
     if (score > bestScore + 1e-9) {
       bestScore = score;
       best = [candidate];
@@ -226,10 +253,16 @@ export function generateAmbush(history: ScenarioFeatures[], seedText: string): S
     }
   }
   const features = best[Math.floor(rng() * best.length)];
-  return buildScenario(features, bestScore, seed);
+  const novelty = Math.min(...history.map((past) => scenarioDistance(features, past)));
+  return buildScenario(features, novelty, seed, targetOf(features, weak));
 }
 
-export function buildScenario(features: ScenarioFeatures, novelty: number, seed: number): Scenario {
+export function buildScenario(
+  features: ScenarioFeatures,
+  novelty: number,
+  seed: number,
+  targetConcept: ConceptId | null = null,
+): Scenario {
   const sector = SECTORS[features.sector];
   const narrator = NARRATORS[features.narrator as Exclude<NarratorId, "novice">];
   const hook = HOOKS[features.hook];
@@ -245,6 +278,7 @@ export function buildScenario(features: ScenarioFeatures, novelty: number, seed:
     hookLesson: hook.lesson,
     assets: buildAssets(features.sector),
     novelty,
+    targetConcept,
     seed,
   };
 }

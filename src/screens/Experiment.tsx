@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { type Estimate, GUARDRAIL_LIMIT, runExperiment, sampleSize } from "../engine/experiment";
 
-const pp = (value: number) => `${value >= 0 ? "+" : "−"}${Math.abs(value * 100).toFixed(1)} п.п.`;
-const share = (value: number) => `${(value * 100).toFixed(1)}%`;
+const pp = (value: number) => `${value >= 0 ? "+" : "−"}${Math.abs(value * 100).toFixed(1).replace(".", ",")} п.п.`;
+const share = (value: number) => `${(value * 100).toFixed(1).replace(".", ",")}%`;
 
 const DOMAIN = { min: -0.1, max: 0.3 };
 const scale = (value: number) =>
@@ -41,7 +41,7 @@ function MethodRow({ title, how, estimate, trueEffect, confound }: MethodRowProp
       <p className="method-verdict">
         {covers
           ? "Настоящий эффект попадает в доверительный интервал."
-          : `${bias > 0 ? "Завышает" : "Занижает"} на ${Math.abs(bias * 100).toFixed(1)} п.п. ${confound ?? ""}`}
+          : `${bias > 0 ? "Завышает" : "Занижает"} на ${Math.abs(bias * 100).toFixed(1).replace(".", ",")} п.п. ${confound ?? ""}`}
       </p>
     </div>
   );
@@ -87,7 +87,7 @@ export function Experiment() {
   const [effect, setEffect] = useState(10);
   const [marketShift, setMarketShift] = useState(6);
   const [scare, setScare] = useState(1);
-  const [seed, setSeed] = useState(11);
+  const [seed, setSeed] = useState(119);
 
   const result = useMemo(
     () => runExperiment({ perGroup, effect: effect / 100, scare: scare / 100, marketShift: marketShift / 100, seed }),
@@ -179,7 +179,7 @@ export function Experiment() {
             </b>
             <p>
               {significant
-                ? `Эффект статистически значим (p = ${result.randomized.pValue < 0.001 ? "< 0,001" : result.randomized.pValue.toFixed(3).replace(".", ",")}).`
+                ? `Эффект статистически значим (${result.randomized.pValue < 0.001 ? "p < 0,001" : `p = ${result.randomized.pValue.toFixed(3).replace(".", ",")}`}).`
                 : `Эффект не доказан (p = ${result.randomized.pValue.toFixed(2).replace(".", ",")}): выборки не хватает.`}{" "}
               {needed !== null && `Нужно около ${needed.toLocaleString("ru-RU")} клиентов на группу.`}
             </p>

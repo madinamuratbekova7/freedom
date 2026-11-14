@@ -18,7 +18,8 @@ interface Props {
   ambushBefore: number;
   daysLater: number;
   nextInDays: number;
-  onStart: () => void;
+  marked: boolean;
+  onStart: (surprise: boolean) => void;
   onSend: (text: string) => void;
   onRetry: () => void;
   onToFeedback: () => void;
@@ -53,6 +54,7 @@ export function AmbushFlowScreens(props: Props) {
     return (
       <Feedback
         dialog={props.dialog}
+        marked={props.marked}
         masteryBefore={props.debateBefore}
         masteryAfter={props.current}
         onNext={props.onToAmbush}
@@ -66,6 +68,7 @@ export function AmbushFlowScreens(props: Props) {
         scenario={scenario}
         weights={props.weights}
         daysLater={props.daysLater}
+        marked={props.marked}
         onChange={props.onWeights}
         onConfirm={props.onConfirm}
       />
@@ -73,7 +76,15 @@ export function AmbushFlowScreens(props: Props) {
   }
 
   if (stage === "rewind") {
-    return <Rewind scenario={scenario} report={report} paths={SIM_OPTIONS.paths} onNext={props.onToResult} />;
+    return (
+      <Rewind
+        scenario={scenario}
+        report={report}
+        paths={SIM_OPTIONS.paths}
+        marked={props.marked}
+        onNext={props.onToResult}
+      />
+    );
   }
 
   const invested = props.weights.slice(0, 4).reduce((sum, w) => sum + w, 0);
